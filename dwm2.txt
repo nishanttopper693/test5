@@ -1,0 +1,551 @@
+# Complete step-by-step practical guide
+
+I'll use the same table names and workflow as your uploaded PICT practical PDF. The PDF specifies Java 21, Apache Hop, a SQLite database named `RetailDW`, a source file named `sales.csv`, and a pipeline for loading `Dim_Product` before creating the remaining dimensions.&#x20;
+
+ETL(1).pdf
+
+
+
+## Step 1: Prepare the project folder
+
+Create the following folder on your computer:
+
+```
+E:\ETL_Project\
+    sales.csv
+    RetailDW.db
+    Load_Dim_Product.hpl
+    Load_Dim_Customer.hpl
+    Load_Dim_City.hpl
+    Load_Dim_Date.hpl
+    Load_Fact_Sales.hpl
+```
+
+If you don't have an E: drive, use another folder and keep the database, CSV, and pipelines together.
+
+## Step 2: Create the source CSV
+
+Open Notepad, paste the following data, and save it as `sales.csv`. In the Save dialog, select Save as type: All Files so Windows doesn't append `.txt`.
+
+```
+Sale_ID,Date,Product,Category,Customer_Name,City,Quantity,Price,Region
+1,2026-01-05,Laptop,Electronics,Amit,Pune,2,50000,West
+2,2026-01-10,Mobile,Electronics,Neha,Mumbai,3,15000,West
+3,2026-01-15,Headphones,Accessories,Rahul,Pune,5,1000,West
+4,2026-02-02,Laptop,Electronics,Priya,Nashik,1,50000,West
+5,2026-02-12,Mobile,Electronics,Amit,Pune,2,15000,West
+6,2026-02-18,Keyboard,Accessories,Neha,Mumbai,4,2000,West
+7,2026-03-03,Laptop,Electronics,Rahul,Mumbai,2,50000,West
+8,2026-03-11,Mobile,Electronics,Priya,Nashik,5,15000,West
+9,2026-03-20,Headphones,Accessories,Amit,Pune,6,1000,West
+10,2026-03-25,Keyboard,Accessories,Rahul,Nashik,3,2000,West
+```
+
+This is the source data that Apache Hop will extract and transform.
+
+## Step 3: Create the SQLite database
+
+Open a SQLite database manager, create `RetailDW.db` inside your project folder, and open its SQL editor.
+
+Execute the following SQL to create the four dimension tables and the fact table.
+
+```
+CREATE TABLE Dim_Product (
+    Product_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+    Product TEXT,
+    Category TEXT,
+    UNIQUE(Product, Category)
+);
+
+CREATE TABLE Dim_Customer (
+    Customer_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+    Customer_Name TEXT UNIQUE
+);
+
+CREATE TABLE Dim_City (
+    City_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+    City_Name TEXT UNIQUE
+);
+
+CREATE TABLE Dim_Date (
+    Date_ID INTEGER PRIMARY KEY,
+    Full_Date TEXT,
+    Day INTEGER,
+    Month INTEGER,
+    Quarter INTEGER,
+    Year INTEGER
+);
+
+CREATE TABLE Fact_Sales (
+    Sale_ID INTEGER PRIMARY KEY,
+    Product_ID INTEGER,
+    Customer_ID INTEGER,
+    City_ID INTEGER,
+    Date_ID INTEGER,
+    Quantity INTEGER,
+    Price REAL,
+    Sales_Amount REAL,
+    FOREIGN KEY(Product_ID) REFERENCES Dim_Product(Product_ID),
+    FOREIGN KEY(Customer_ID) REFERENCES Dim_Customer(Customer_ID),
+    FOREIGN KEY(City_ID) REFERENCES Dim_City(City_ID),
+    FOREIGN KEY(Date_ID) REFERENCES Dim_Date(Date_ID)
+);
+```
+
+What these tables mean
+
+- `Dim_Product`: product names and categories.
+- `Dim_Customer`: customer names.
+- `Dim_City`: city names.
+- `Dim_Date`: date details such as day, month, quarter, and year.
+- `Fact_Sales`: the sales transactions and foreign keys linking them to the dimensions.
+
+This is the star schema used to build the sales data mart.
+
+## Step 4: Create the database connection in Apache Hop
+
+Your practical PDF describes these steps on pages 2–3.&#x20;
+
+ETL(1).pdf
+
+
+
+1. Open Apache Hop using `hop-gui.bat`.
+2. In the left panel, locate Metadata.
+3. Right-click Relational Database Connection.
+4. Select New.
+5. Enter the connection name `RetailDW`.
+6. Choose the SQLite connection type.
+7. In the database name field, browse to your `RetailDW.db` file.
+8. Click Test and confirm the connection succeeds.
+9. Save the connection and return to the pipeline canvas.
+
+Keep this connection for all five pipelines.
+
+## Step 5: Create the first pipeline — `Load_Dim_Product.hpl`
+
+Create a new pipeline and save it in your project folder.
+
+The pipeline should look like this:
+
+Text File Input
+
+Select Values
+
+Sort Rows
+
+Unique Rows
+
+Table Output
+
+### 5.1 Add Text File Input
+
+1. Click an empty area of the canvas.
+2. Search for `Text File Input`.
+3. Add the transform and double-click it.
+4. In the File tab, browse to `sales.csv` and add it to the selected files list.
+5. In the Content tab, set the separator to a comma.
+6. Enable the header option and set the number of header lines to `1`.
+7. Open the Fields tab and click Get Fields.
+8. Preview the records to check that the columns are read correctly.
+9. Click OK.
+
+### 5.2 Add Select Values
+
+1. Add a `Select Values` transform.
+2. Connect `Text File Input` to `Select Values` by creating a hop.
+3. Open `Select Values`.
+4. In the Select & Alter tab, retain only `Product` and `Category`.
+5. Save the transform.
+
+### 5.3 Add Sort Rows
+
+1. Add `Sort Rows`.
+2. Connect it after `Select Values`.
+3. Configure the sort fields as:
+   - `Product` — ascending.
+   - `Category` — ascending.
+4. Save.
+
+Sorting ensures identical product-category combinations are adjacent.
+
+### 5.4 Add Unique Rows
+
+1. Add `Unique Rows`.
+2. Connect it after `Sort Rows`.
+3. Configure the comparison fields as `Product` and `Category`.
+4. Save.
+
+This removes duplicate product-category combinations from the stream.
+
+### 5.5 Add Table Output
+
+1. Add `Table Output`.
+2. Connect it after `Unique Rows`.
+3. Open the transform.
+4. Set Connection to `RetailDW`.
+5. Set Target table to `Dim_Product`.
+6. Enable the option to specify database fields.
+7. Click Get Fields and verify that `Product` and `Category` map to their matching columns.
+8. Leave `Product_ID` unmapped because SQLite generates it automatically.
+9. Click OK.
+
+### 5.6 Run and verify the pipeline
+
+Click the Run button and confirm that all transforms finish successfully.
+
+Execute this query in the SQLite SQL editor:
+
+```
+SELECT * FROM Dim_Product;
+```
+
+You should see four distinct products: Laptop, Mobile, Headphones, and Keyboard.
+
+This pipeline follows the product-dimension procedure illustrated on pages 5–6 of your PDF.&#x20;
+
+ETL(1).pdf
+
+
+
+## Step 6: Create the customer dimension pipeline
+
+Save a new pipeline as `Load_Dim_Customer.hpl`.
+
+Use these transforms in order:
+
+Text File Input
+
+Select Values
+
+Sort Rows
+
+Unique Rows
+
+Table Output
+
+Configure it as follows:
+
+1. Text File Input: Read the same `sales.csv`.
+2. Select Values: Keep only `Customer_Name`.
+3. Sort Rows: Sort by `Customer_Name` ascending.
+4. Unique Rows: Compare `Customer_Name`.
+5. Table Output: Use connection `RetailDW` and target `Dim_Customer`. Map only `Customer_Name`, leaving `Customer_ID` unmapped.
+
+Run the pipeline and verify:
+
+```
+SELECT * FROM Dim_Customer;
+```
+
+Expected distinct customers: Amit, Neha, Rahul, and Priya.
+
+## Step 7: Create the city dimension pipeline
+
+Save the pipeline as `Load_Dim_City.hpl`.
+
+Follow the same process:
+
+1. Add `Text File Input` and select `sales.csv`.
+2. Add `Select Values` and keep only `City`.
+3. Add `Sort Rows` and sort by `City`.
+4. Add `Unique Rows` and compare `City`.
+5. Add `Table Output`, using connection `RetailDW` and target `Dim_City`.
+6. Map `City` to `City_Name`; leave `City_ID` unmapped.
+7. Run the pipeline.
+
+Verify the results:
+
+```
+SELECT * FROM Dim_City;
+```
+
+The three distinct cities should be Pune, Mumbai, and Nashik.
+
+## Step 8: Create the date dimension pipeline
+
+Save a new pipeline as `Load_Dim_Date.hpl`.
+
+The purpose is to store each transaction date once, along with its day, month, quarter, and year.
+
+### 8.1 Add the input and remove unnecessary fields
+
+1. Add `Text File Input` and configure it to read `sales.csv`.
+2. Add `Select Values` and retain only the `Date` field.
+3. Add `Sort Rows`, sorting by `Date`.
+4. Add `Unique Rows`, comparing `Date`.
+
+### 8.2 Calculate the date fields
+
+Add the appropriate date-calculation transforms available in your Hop version. You need these output fields:
+
+| Output field | Calculation                                        |
+| ------------ | -------------------------------------------------- |
+| `Full_Date`  | Source date in `YYYY-MM-DD` format                 |
+| `Day`        | Day of the month                                   |
+| `Month`      | Month number, 1–12                                 |
+| `Quarter`    | `((Month - 1) // 3) + 1`                           |
+| `Year`       | Four-digit year                                    |
+| `Date_ID`    | Date formatted as `YYYYMMDD`, stored as an integer |
+
+For example, the source date `2026-02-12` should produce:
+
+| Field     | Value      |
+| --------- | ---------- |
+| Date_ID   | 20260212   |
+| Full_Date | 2026-02-12 |
+| Day       | 12         |
+| Month     | 2          |
+| Quarter   | 1          |
+| Year      | 2026       |
+
+Use date extraction and formatting transforms to create these fields. If your Hop version provides a Calculator transform with date functions, use it to extract the day, month, and year, and derive the quarter from the month.
+
+### 8.3 Load the date dimension
+
+1. Add `Table Output`.
+2. Select connection `RetailDW`.
+3. Select target table `Dim_Date`.
+4. Map all six output fields to their corresponding database columns.
+5. Run the pipeline.
+
+Verify the result:
+
+```
+SELECT * FROM Dim_Date;
+```
+
+You should get one row per distinct transaction date.
+
+Important: `Date_ID` must match the same `YYYYMMDD` representation used by the fact pipeline. If the ID format differs, the date lookup will fail.
+
+## Step 9: Create the fact table pipeline
+
+Save the pipeline as `Load_Fact_Sales.hpl`.
+
+This is the most important pipeline because it connects the sales transactions with the four dimension tables.
+
+### 9.1 Read the original sales data
+
+1. Add `Text File Input`.
+2. Select `sales.csv`.
+3. Configure the comma separator and header row.
+4. Retrieve the field names.
+5. Preview the records to ensure that all source columns are present.
+
+### 9.2 Calculate the sales amount
+
+Add the Calculator or Formula transform to calculate:
+
+\\[ \text{Sales\\\_Amount}=\text{Quantity}\times\text{Price} \\]
+
+For example, a transaction with quantity `2` and price `50000` should have a sales amount of `100000`.
+
+Name the resulting field `Sales_Amount` and ensure it has a numeric data type.
+
+### 9.3 Look up the dimension IDs
+
+Add the appropriate database lookup transforms. The exact transform names and configuration labels can vary slightly by Hop version.
+
+| Lookup table   | Match field from CSV           | Return field  |
+| -------------- | ------------------------------ | ------------- |
+| `Dim_Product`  | `Product`                      | `Product_ID`  |
+| `Dim_Customer` | `Customer_Name`                | `Customer_ID` |
+| `Dim_City`     | `City`                         | `City_ID`     |
+| `Dim_Date`     | `Date` converted to `YYYYMMDD` | `Date_ID`     |
+
+For each lookup:
+
+1. Choose the `RetailDW` database connection.
+2. Select the corresponding dimension table.
+3. Specify the source field used for matching.
+4. Specify the dimension field to return.
+5. Give the returned field the required ID name.
+6. Configure handling for unmatched records and confirm that every source record finds a match.
+
+The dimension pipelines must already have been run successfully.
+
+### 9.4 Select the final fact fields
+
+Add `Select Values` after the lookup transforms and retain only these fields:
+
+- `Sale_ID`
+- `Product_ID`
+- `Customer_ID`
+- `City_ID`
+- `Date_ID`
+- `Quantity`
+- `Price`
+- `Sales_Amount`
+
+Ensure their data types are compatible with the SQLite schema.
+
+### 9.5 Load Fact_Sales
+
+Add `Table Output` and configure:
+
+- Connection: `RetailDW`
+- Target table: `Fact_Sales`
+- Database field mapping: match each of the eight fields listed above to the corresponding table column.
+
+Run the pipeline and check that all ten sales records are inserted.
+
+Verify with:
+
+```
+SELECT * FROM Fact_Sales;
+```
+
+You should see ten rows containing the sales measures and the dimension IDs.
+
+## Step 10: Run the pipelines in the correct order
+
+Always execute the pipelines in this sequence:
+
+1\. Load_Dim_Product.hpl
+
+2\. Load_Dim_Customer.hpl
+
+3\. Load_Dim_City.hpl
+
+4\. Load_Dim_Date.hpl
+
+5\. Load_Fact_Sales.hpl
+
+After each run, inspect the pipeline log for errors. Do not run the fact pipeline until all dimension tables contain their data.
+
+## Step 11: Construct and understand the data cube
+
+A data cube is a multidimensional view of the sales data. In this practical, you can analyze sales using these dimensions:
+
+- Product: Which books or products were sold? In this retail example, products are laptops, mobiles, headphones, and keyboards.
+- Customer: Who purchased the products?
+- City: Where were the sales made?
+- Date: When did the sales happen?
+
+The measures are `Quantity`, `Price`, and `Sales_Amount`.
+
+The fact table and dimensions provide the structure for OLAP analysis. You do not need to create a separate physical cube for the SQL-based OLAP operations in this assignment.
+
+## Step 12: Execute the four OLAP SQL queries
+
+Open your SQLite database's SQL editor and execute each query separately.
+
+### Query 1: Slice — sales for Electronics
+
+Slice selects a single value from one dimension.
+
+```
+SELECT p.Category, SUM(f.Sales_Amount) AS Total_Sales
+FROM Fact_Sales f
+JOIN Dim_Product p ON f.Product_ID = p.Product_ID
+WHERE p.Category = 'Electronics'
+GROUP BY p.Category;
+```
+
+Expected result: One row showing the total sales revenue for Electronics.
+
+### Query 2: Dice — sales for Electronics in Pune
+
+Dice filters on multiple conditions across dimensions.
+
+```
+SELECT p.Product, c.City_Name,
+       SUM(f.Sales_Amount) AS Total_Sales
+FROM Fact_Sales f
+JOIN Dim_Product p ON f.Product_ID = p.Product_ID
+JOIN Dim_City c ON f.City_ID = c.City_ID
+WHERE p.Category = 'Electronics'
+  AND c.City_Name = 'Pune'
+GROUP BY p.Product, c.City_Name;
+```
+
+Expected result: Product-wise sales for Electronics sold in Pune.
+
+### Query 3: Drill-down — sales by year, month and day
+
+Drill-down moves from summarized information to greater detail.
+
+```
+SELECT d.Year, d.Month, d.Day,
+       SUM(f.Sales_Amount) AS Total_Sales
+FROM Fact_Sales f
+JOIN Dim_Date d ON f.Date_ID = d.Date_ID
+GROUP BY d.Year, d.Month, d.Day
+ORDER BY d.Year, d.Month, d.Day;
+```
+
+Expected result: Daily sales totals, grouped by year, month, and day.
+
+### Query 4: Roll-up — total sales by year
+
+Roll-up aggregates detailed data into a higher-level summary.
+
+```
+SELECT d.Year, SUM(f.Sales_Amount) AS Total_Sales
+FROM Fact_Sales f
+JOIN Dim_Date d ON f.Date_ID = d.Date_ID
+GROUP BY d.Year
+ORDER BY d.Year;
+```
+
+Expected result: One row per year showing total sales revenue.
+
+## Step 13: Verify the final data mart
+
+Execute these checks to confirm that your data has been loaded correctly:
+
+```
+SELECT COUNT(*) AS Total_Sales_Records
+FROM Fact_Sales;
+```
+
+Expected: `10`
+
+```
+SELECT COUNT(*) AS Total_Products
+FROM Dim_Product;
+```
+
+Expected: `4`
+
+```
+SELECT COUNT(*) AS Total_Customers
+FROM Dim_Customer;
+```
+
+Expected: `4`
+
+```
+SELECT COUNT(*) AS Total_Cities
+FROM Dim_City;
+```
+
+Expected: `3`
+
+```
+SELECT COUNT(*) AS Total_Dates
+FROM Dim_Date;
+```
+
+Expected: `10`
+
+These counts assume you used the exact sample CSV provided above and ran the pipelines once against empty tables.
+
+## Step 14: Common errors and their solutions
+
+| Problem                               | What to check                                                                             |
+| ------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Database connection fails             | Verify the SQLite file path and connection settings.                                      |
+| CSV fields are read incorrectly       | Check that the separator is a comma and the header row is enabled.                        |
+| Duplicate dimension rows              | Ensure `Sort Rows` comes before `Unique Rows`.                                            |
+| Missing dimension IDs                 | Run the dimension pipelines before the fact pipeline.                                     |
+| Date lookup fails                     | Ensure `Date_ID` uses the same `YYYYMMDD` format in both tables.                          |
+| Table Output fails                    | Verify the target table name, field mappings, and data types.                             |
+| Fact table contains duplicate records | Check whether the fact pipeline was run multiple times without clearing existing records. |
+
+## Result and conclusion
+
+The retail sales data mart is created using Apache Hop and SQLite. The ETL process extracts data from `sales.csv`, transforms it into dimension and fact records, and loads the results into a star schema. The data is then analyzed through a multidimensional sales cube using four OLAP operations: Slice, Dice, Drill-down, and Roll-up.
+
+For your practical submission, capture screenshots of the five successful pipeline runs, the populated dimension and fact tables, and the output of the four SQL queries.
